@@ -44,7 +44,7 @@ object FriendSearch {
           truplet.sendToDst(truplet.srcId.toString)
         } else {
 //          truplet.sendToDst(truplet.srcAttr)
-          truplet.sendToDst(s"${truplet.srcAttr},${truplet.srcId}")
+          truplet.sendToDst(s"${truplet.srcId}->${truplet.srcAttr}")
         }
       },
       (a, b) => {
@@ -67,7 +67,7 @@ object FriendSearch {
           truplet.sendToSrc(truplet.dstId.toString)
         } else {
 //          truplet.sendToSrc(truplet.dstAttr)
-          truplet.sendToSrc(s"${truplet.dstAttr},${truplet.dstId}")
+          truplet.sendToSrc(s"${truplet.dstId}->${truplet.dstAttr}")
         }
       },
       (a, b) => {
@@ -176,7 +176,8 @@ object FriendSearch {
   def main(args: Array[String]): Unit = {
     val edgeFilePath = "D:\\grap.txt"
     val graph: Graph[String, String] = loadGraph(edgeFilePath)
-    oneDegreeAll(graph)
+//    oneDegreeAll(graph)
     twoDegreeAll(graph).foreach(println(_))
+
   }
 }
