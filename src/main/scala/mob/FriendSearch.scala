@@ -43,8 +43,13 @@ object FriendSearch {
         if (index == 0) {
           truplet.sendToDst(truplet.srcId.toString)
         } else {
-//          truplet.sendToDst(truplet.srcAttr)
-          truplet.sendToDst(s"${truplet.srcId}->${truplet.srcAttr}")
+          val srcId = truplet.srcId
+          if (truplet.srcAttr != null) {
+            val path = truplet.srcAttr.split("\\|").map(node => s"$srcId->${node}").addString(new StringBuilder, "|")
+            truplet.sendToDst(path.toString)
+          } else {
+            truplet.sendToDst("")
+          }
         }
       },
       (a, b) => {
@@ -66,8 +71,13 @@ object FriendSearch {
         if (index == 0) {
           truplet.sendToSrc(truplet.dstId.toString)
         } else {
-//          truplet.sendToSrc(truplet.dstAttr)
-          truplet.sendToSrc(s"${truplet.dstId}->${truplet.dstAttr}")
+          val dstId = truplet.dstId
+          if (truplet.dstAttr != null) {
+            val path = truplet.dstAttr.split("\\|").map(node => s"$dstId->${node}").addString(new StringBuilder, "|")
+            truplet.sendToSrc(path.toString)
+          } else {
+            truplet.sendToSrc("")
+          }
         }
       },
       (a, b) => {
@@ -119,19 +129,7 @@ object FriendSearch {
     return dd.union(rr).union(dr).union(rd).aggregateByKey(List[(String, String)]())((list, attr) => list :+ attr, (a, b) => a ::: b).mapValues(list => {
       val map = list.map(tt => (tt._2, tt._1)).toMap
       (map("dd"), map("rr"), map("dr"), map("rd"))
-    })/*.map(trup => {
-      def distinctNode(id: String, input: String): String = {
-        if (id != null && input != null) {
-          return (input.split("\\|").toSet - id).addString(new StringBuilder, "|").toString()
-        } else {
-          return ""
-        }
-      }
-
-      val id = trup._1
-      val truple = trup._2
-      (trup._1, (distinctNode(id.toString, truple._1), distinctNode(id.toString, truple._2), distinctNode(id.toString, truple._3), distinctNode(id.toString, truple._4)))
-    })*/
+    })
   }
 
   /**
@@ -174,9 +172,9 @@ object FriendSearch {
   }
 
   def main(args: Array[String]): Unit = {
-    val edgeFilePath = "D:\\grap.txt"
+    val edgeFilePath = "D:\\graph.txt"
     val graph: Graph[String, String] = loadGraph(edgeFilePath)
-//    oneDegreeAll(graph)
+    //    oneDegreeAll(graph)
     twoDegreeAll(graph).foreach(println(_))
 
   }
