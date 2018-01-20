@@ -47,8 +47,6 @@ object FriendSearch {
           if (truplet.srcAttr != null) {
             val path = truplet.srcAttr.split("\\|").map(node => s"$srcId->${node}").addString(new StringBuilder, "|")
             truplet.sendToDst(path.toString)
-          } else {
-            truplet.sendToDst("")
           }
         }
       },
@@ -75,8 +73,6 @@ object FriendSearch {
           if (truplet.dstAttr != null) {
             val path = truplet.dstAttr.split("\\|").map(node => s"$dstId->${node}").addString(new StringBuilder, "|")
             truplet.sendToSrc(path.toString)
-          } else {
-            truplet.sendToSrc("")
           }
         }
       },
