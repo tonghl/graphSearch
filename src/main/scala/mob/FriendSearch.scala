@@ -30,62 +30,67 @@ object FriendSearch {
     val graph: Graph[Long, String] = Graph.fromEdges(edgeRDD, 0, StorageLevel.MEMORY_AND_DISK, StorageLevel.MEMORY_AND_DISK)
     return graph.mapVertices((id, att) => (att.toString))
   }
-  def loadGraphNoIndex(edgeFilePath:String)={
+
+  def loadGraphNoIndex(edgeFilePath: String) = {
     val conf = new SparkConf().setAppName("graph").setMaster("local")
     val sc = new SparkContext(conf)
     val edgeRDD = sc.textFile(edgeFilePath)
-                    .map(edgeString=>edgeString.split(" "))
-                    .filter(array=>array.length==2&&array(0)!=array(1)).cache()
+      .map(edgeString => edgeString.split(" "))
+      .filter(array => array.length == 2 && array(0) != array(1)).cache()
     /*给每个点生成一个唯一的ID(long)*/
-    val vertexWithIndedRdd = edgeRDD.repartition(5).flatMap(x=>x).distinct().zipWithUniqueId()
+    val vertexWithIndedRdd = edgeRDD.repartition(5).flatMap(x => x).distinct().zipWithUniqueId()
     vertexWithIndedRdd.foreach(println(_))
     val edgeWithIndex = edgeRDD
-      .flatMap(edgeTruple=>{edgeTruple.map(node=>(node,edgeTruple))})
-      .leftOuterJoin(vertexWithIndedRdd).map(trup=>{
-          val edgeTrup = trup._2._1
-          if(trup._1.equals(edgeTrup(0))){
-            (s"${edgeTrup(0)}${edgeTrup(1)}",(edgeTrup,trup._2._2,null))
-          }else if(trup._1.equals(edgeTrup(1))){
-            (s"${edgeTrup(0)}${edgeTrup(1)}",(edgeTrup,null,trup._2._2))
-          }else{
-            (null,null)
-          }
+      .flatMap(edgeTruple => {
+        edgeTruple.map(node => (node, edgeTruple))
+      })
+      .leftOuterJoin(vertexWithIndedRdd).map(trup => {
+      val edgeTrup = trup._2._1
+      if (trup._1.equals(edgeTrup(0))) {
+        (s"${edgeTrup(0)}${edgeTrup(1)}", (edgeTrup, trup._2._2, null))
+      } else if (trup._1.equals(edgeTrup(1))) {
+        (s"${edgeTrup(0)}${edgeTrup(1)}", (edgeTrup, null, trup._2._2))
+      } else {
+        (null, null)
+      }
 
-        })
-      .filter(truple=>truple._1!=null)
-      .reduceByKey((a,b)=>{
+    })
+      .filter(truple => truple._1 != null)
+      .reduceByKey((a, b) => {
         val edgeTruple = a._1
-        if(a._2==null){
-          (null,b._2,a._3)
-        }else{
-          (null,a._2,b._3)
+        if (a._2 == null) {
+          (null, b._2, a._3)
+        } else {
+          (null, a._2, b._3)
         }
-      }).map(tuple=>(Edge(tuple._2._2.get,tuple._2._3.get,"")))
-    Graph(vertexWithIndedRdd.map(truple=>(truple._2,truple._1)),edgeWithIndex)
+      }).map(tuple => (Edge(tuple._2._2.get, tuple._2._3.get, "")))
+    Graph(vertexWithIndedRdd.map(truple => (truple._2, (truple._1,""))), edgeWithIndex)
   }
-  def generaVerId(vertex:RDD[String]): Unit ={
+
+  def generaVerId(vertex: RDD[String]): Unit = {
     val vertexNum = vertex.count()
     val vertexPartitionNum = vertex.getNumPartitions
-    val partitionNum = vertexNum/vertexPartitionNum
-    val rangPartition = (0 until vertexPartitionNum).map(partitionId =>(partitionId*partitionNum,(partitionId+1)*partitionNum))
-    val vertexIdRdd = vertex.sparkContext.parallelize(rangPartition,rangPartition.size).flatMap(x=>x._1 until x._2)
+    val partitionNum = vertexNum / vertexPartitionNum
+    val rangPartition = (0 until vertexPartitionNum).map(partitionId => (partitionId * partitionNum, (partitionId + 1) * partitionNum))
+    val vertexIdRdd = vertex.sparkContext.parallelize(rangPartition, rangPartition.size).flatMap(x => x._1 until x._2)
     vertexIdRdd.zipWithIndex().foreach(println(_))
   }
+
   /**
     * 正向搜索图
     *
     * @param graph
     * @return
     */
-  def reverseSearch(graph: Graph[String, String], index: Int): Graph[String, String] = {
+  def reverseSearch(graph: Graph[(String, String), String], index: Int): Graph[(String, String), String] = {
     val vertexRdd = graph.aggregateMessages[String](
       truplet => {
         if (index == 0) {
-          truplet.sendToDst(truplet.srcId.toString)
+          truplet.sendToDst(truplet.srcAttr._1)
         } else {
           val srcId = truplet.srcId
           if (truplet.srcAttr != null) {
-            val path = truplet.srcAttr.split("\\|").map(node => s"$srcId->${node}").addString(new StringBuilder, "|")
+            val path = truplet.srcAttr._2.split("\\|").map(node => s"$srcId->${node}").addString(new StringBuilder, "|")
             truplet.sendToDst(path.toString)
           }
         }
@@ -94,7 +99,8 @@ object FriendSearch {
         if (a == null && b != null) b else if (a != null && b == null) a else if (a == null && b == null) "" else s"${a}|${b}"
       }
     )
-    return Graph(vertexRdd, graph.edges)
+    val vertexRddWitchPath = vertexRdd.leftOuterJoin(graph.vertices).mapValues(tuple=>(tuple._1,tuple._2.getOrElse(("",""))._2))
+    Graph(vertexRddWitchPath, graph.edges)
   }
 
   /**
@@ -103,15 +109,15 @@ object FriendSearch {
     * @param graph
     * @return
     */
-  def directSearch(graph: Graph[String, String], index: Int): Graph[String, String] = {
-    val vertexRdd = graph.aggregateMessages[String](
+  def directSearch(graph: Graph[(String, String), String], index: Int): Graph[(String, String), String] = {
+    val vertexRdd: VertexRDD[String] = graph.aggregateMessages[String](
       truplet => {
         if (index == 0) {
-          truplet.sendToSrc(truplet.dstId.toString)
+          truplet.sendToSrc(truplet.dstAttr._1)
         } else {
           val dstId = truplet.dstId
           if (truplet.dstAttr != null) {
-            val path = truplet.dstAttr.split("\\|").map(node => s"$dstId->${node}").addString(new StringBuilder, "|")
+            val path = truplet.dstAttr._2.split("\\|").map(node => s"$dstId->${node}").addString(new StringBuilder, "|")
             truplet.sendToSrc(path.toString)
           }
         }
@@ -120,7 +126,8 @@ object FriendSearch {
         if (a == null && b != null) b else if (a != null && b == null) a else if (a == null && b == null) "" else s"${a}|${b}"
       }
     )
-    return Graph(vertexRdd, graph.edges)
+    val vertexRddWitchPath = vertexRdd.leftOuterJoin(graph.vertices).mapValues(tuple=>(tuple._1,tuple._2.getOrElse(("",""))._2))
+    Graph(vertexRddWitchPath, graph.edges)
   }
 
   /**
@@ -129,13 +136,13 @@ object FriendSearch {
     * @param graph
     * @return Graph(id,(正，反））
     */
-  def oneDegreeAll(graph: Graph[String, String]): RDD[(VertexId, (String, String))] = {
-    //    val directSearchG = directSearch(graph, 0).vertices
-    //    val reverseSearchG = reverseSearch(graph, 0).vertices
-    //    return directSearchG.join(reverseSearchG)
-    val directSearchG = graph.collectNeighborIds(EdgeDirection.Out).mapValues(array => array.addString(new StringBuilder, "|").toString())
-    val reverseSearchG = graph.collectNeighborIds(EdgeDirection.In).mapValues(array => array.addString(new StringBuilder, "|").toString())
-    return directSearchG.fullOuterJoin(reverseSearchG).mapValues(truple => (truple._1.getOrElse(null), truple._2.getOrElse(null)))
+  def oneDegreeAll(graph: Graph[(String, String), String])= {
+        val directSearchG = directSearch(graph, 0).vertices
+        val reverseSearchG = reverseSearch(graph, 0).vertices
+        directSearchG.join(reverseSearchG)
+//    val directSearchG = graph.collectNeighborIds(EdgeDirection.Out).mapValues(array => array.addString(new StringBuilder, "|").toString())
+//    val reverseSearchG = graph.collectNeighborIds(EdgeDirection.In).mapValues(array => array.addString(new StringBuilder, "|").toString())
+//    directSearchG.fullOuterJoin(reverseSearchG).mapValues(truple => (truple._1.getOrElse(null), truple._2.getOrElse(null)))
 
   }
 
@@ -145,7 +152,7 @@ object FriendSearch {
     * @param graph
     * @return Graph(id,(正正，反反，正反，反正））
     */
-  def twoDegreeAll(graph: Graph[String, String]): RDD[(VertexId, (String, String, String, String))] = {
+  def twoDegreeAll(graph:  Graph[(String, String), String]): RDD[(VertexId, (String, String, String, String))] = {
     /**
       * 注释掉的实现方式会重复计算第一阶段,增加计算时长，后期维护尽量不要使用这种方式
       * var dd = searchByPatch("1,1",graph).vertices.mapValues(att => (att,"dd"))
@@ -162,10 +169,10 @@ object FriendSearch {
     d.vertices.cache()
     val r = reverseSearch(graph, 0)
     r.vertices.cache()
-    val dd = directSearch(d, 1).vertices.mapValues(att => (att, "dd"))
-    val rr = reverseSearch(r, 1).vertices.mapValues(att => (att, "rr"))
-    val dr = directSearch(r, 1).vertices.mapValues(att => (att, "dr"))
-    val rd = reverseSearch(d, 1).vertices.mapValues(att => (att, "rd"))
+    val dd = directSearch(d, 1).vertices.mapValues(att => (att._2, "dd"))
+    val rr = reverseSearch(r, 1).vertices.mapValues(att => (att._2, "rr"))
+    val dr = directSearch(r, 1).vertices.mapValues(att => (att._2, "dr"))
+    val rd = reverseSearch(d, 1).vertices.mapValues(att => (att._2, "rd"))
     return dd.union(rr).union(dr).union(rd).aggregateByKey(List[(String, String)]())((list, attr) => list :+ attr, (a, b) => a ::: b).mapValues(list => {
       val map = list.map(tt => (tt._2, tt._1)).toMap
       (map("dd"), map("rr"), map("dr"), map("rd"))
@@ -180,7 +187,7 @@ object FriendSearch {
     * @param graph
     * @return
     */
-  def searchScheduler(direct: String, index: Int, graph: Graph[String, String]): Graph[String, String] = {
+  def searchScheduler(direct: String, index: Int, graph: Graph[(String, String), String]): Graph[(String, String), String] = {
     if ("1".equals(direct)) {
       return directSearch(graph, index)
     } else if ("-1".equals(direct)) {
@@ -197,12 +204,12 @@ object FriendSearch {
     * @param graph
     * @return
     */
-  def searchByPatch(path: String, graph: Graph[String, String]): Graph[String, String] = {
+  def searchByPatch(path: String, graph: Graph[(String, String), String]): Graph[(String, String), String] = {
     /*判定搜索路径正确性*/
     if (!path.matches("-?1[,-?1]*")) {
       throw new Exception("索引路径不正确，eg:'-1,1-1'")
     }
-    var graphTemp: Graph[String, String] = graph
+    var graphTemp: Graph[(String, String), String] = graph
     /*路径索搜*/
     val pathArr = path.split(",")
     for (index <- 0 until pathArr.length) {
@@ -213,10 +220,11 @@ object FriendSearch {
 
   def main(args: Array[String]): Unit = {
     val edgeFilePath = "D:\\graph.txt"
-//    val graph: Graph[String, String] = loadGraph(edgeFilePath)
-//    oneDegreeAll(graph).foreach(println(_))
-//    twoDegreeAll(graph).foreach(println(_))
-//    loadGraphNoIndex(edgeFilePath).edges.foreach(println(_))
-    loadGraphNoIndex(edgeFilePath).triplets.foreach(println(_))
+    //    val graph: Graph[String, String] = loadGraph(edgeFilePath)
+    //    oneDegreeAll(graph).foreach(println(_))
+    //    twoDegreeAll(graph).foreach(println(_))
+    //    loadGraphNoIndex(edgeFilePath).edges.foreach(println(_))
+    val graph: Graph[(String, String), String] = loadGraphNoIndex(edgeFilePath)
+    oneDegreeAll(graph = graph).foreach(println(_))
   }
 }
