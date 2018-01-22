@@ -34,12 +34,12 @@ object FriendSearch {
   def loadGraphNoIndex(edgeFilePath: String) = {
     val conf = new SparkConf().setAppName("graph").setMaster("local")
     val sc = new SparkContext(conf)
+    /*拉去数据 校验数据*/
     val edgeRDD = sc.textFile(edgeFilePath)
       .map(edgeString => edgeString.split(" "))
       .filter(array => array.length == 2 && array(0) != array(1)).cache()
     /*给每个点生成一个唯一的ID(long)*/
     val vertexWithIndedRdd = edgeRDD.repartition(5).flatMap(x => x).distinct().zipWithUniqueId()
-    vertexWithIndedRdd.foreach(println(_))
     val edgeWithIndex = edgeRDD
       .flatMap(edgeTruple => {
         edgeTruple.map(node => (node, edgeTruple))
@@ -88,9 +88,8 @@ object FriendSearch {
         if (index == 0) {
           truplet.sendToDst(truplet.srcAttr._1)
         } else {
-          val srcId = truplet.srcId
           if (truplet.srcAttr != null) {
-            val path = truplet.srcAttr._2.split("\\|").map(node => s"$srcId->${node}").addString(new StringBuilder, "|")
+            val path = truplet.srcAttr._2.split("\\|").map(node => s"${truplet.srcAttr._1}->${node}").addString(new StringBuilder, "|")
             truplet.sendToDst(path.toString)
           }
         }
@@ -115,9 +114,8 @@ object FriendSearch {
         if (index == 0) {
           truplet.sendToSrc(truplet.dstAttr._1)
         } else {
-          val dstId = truplet.dstId
           if (truplet.dstAttr != null) {
-            val path = truplet.dstAttr._2.split("\\|").map(node => s"$dstId->${node}").addString(new StringBuilder, "|")
+            val path = truplet.dstAttr._2.split("\\|").map(node => s"${truplet.dstAttr._1}->${node}").addString(new StringBuilder, "|")
             truplet.sendToSrc(path.toString)
           }
         }
@@ -126,7 +124,7 @@ object FriendSearch {
         if (a == null && b != null) b else if (a != null && b == null) a else if (a == null && b == null) "" else s"${a}|${b}"
       }
     )
-    val vertexRddWitchPath = vertexRdd.leftOuterJoin(graph.vertices).mapValues(tuple=>(tuple._1,tuple._2.getOrElse(("",""))._2))
+    val vertexRddWitchPath: RDD[(VertexId, (String, String))] = vertexRdd.leftOuterJoin(graph.vertices).mapValues(tuple=>(tuple._1,tuple._2.getOrElse(("",""))._2))
     Graph(vertexRddWitchPath, graph.edges)
   }
 
@@ -137,8 +135,9 @@ object FriendSearch {
     * @return Graph(id,(正，反））
     */
   def oneDegreeAll(graph: Graph[(String, String), String])= {
-        val directSearchG = directSearch(graph, 0).vertices
-        val reverseSearchG = reverseSearch(graph, 0).vertices
+        val directSearchG = directSearch(graph, 0).vertices.map(truple =>truple)
+        directSearchG.foreach(println(_))
+        val reverseSearchG = reverseSearch(graph, 0).vertices.map(truple=>truple)
         directSearchG.join(reverseSearchG)
 //    val directSearchG = graph.collectNeighborIds(EdgeDirection.Out).mapValues(array => array.addString(new StringBuilder, "|").toString())
 //    val reverseSearchG = graph.collectNeighborIds(EdgeDirection.In).mapValues(array => array.addString(new StringBuilder, "|").toString())
@@ -225,6 +224,6 @@ object FriendSearch {
     //    twoDegreeAll(graph).foreach(println(_))
     //    loadGraphNoIndex(edgeFilePath).edges.foreach(println(_))
     val graph: Graph[(String, String), String] = loadGraphNoIndex(edgeFilePath)
-    oneDegreeAll(graph = graph).foreach(println(_))
+    oneDegreeAll(graph = graph)
   }
 }
