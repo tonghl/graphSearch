@@ -36,8 +36,32 @@ object FriendSearch {
     val edgeRDD = sc.textFile(edgeFilePath)
                     .map(edgeString=>edgeString.split(" "))
                     .filter(array=>array.length==2&&array(0)!=array(1)).cache()
-    val vertex = edgeRDD.repartition(5).flatMap(x=>x).distinct().zipWithUniqueId()
-//    edgeRDD.fl
+    /*给每个点生成一个唯一的ID(long)*/
+    val vertexWithIndedRdd = edgeRDD.repartition(5).flatMap(x=>x).distinct().zipWithUniqueId()
+    vertexWithIndedRdd.foreach(println(_))
+    val edgeWithIndex = edgeRDD
+      .flatMap(edgeTruple=>{edgeTruple.map(node=>(node,edgeTruple))})
+      .leftOuterJoin(vertexWithIndedRdd).map(trup=>{
+          val edgeTrup = trup._2._1
+          if(trup._1.equals(edgeTrup(0))){
+            (s"${edgeTrup(0)}${edgeTrup(1)}",(edgeTrup,trup._2._2,null))
+          }else if(trup._1.equals(edgeTrup(1))){
+            (s"${edgeTrup(0)}${edgeTrup(1)}",(edgeTrup,null,trup._2._2))
+          }else{
+            (null,null)
+          }
+
+        })
+      .filter(truple=>truple._1!=null)
+      .reduceByKey((a,b)=>{
+        val edgeTruple = a._1
+        if(a._2==null){
+          (null,b._2,a._3)
+        }else{
+          (null,a._2,b._3)
+        }
+      }).map(tuple=>(Edge(tuple._2._2.get,tuple._2._3.get,"")))
+    Graph(vertexWithIndedRdd.map(truple=>(truple._2,truple._1)),edgeWithIndex)
   }
   def generaVerId(vertex:RDD[String]): Unit ={
     val vertexNum = vertex.count()
@@ -192,6 +216,7 @@ object FriendSearch {
 //    val graph: Graph[String, String] = loadGraph(edgeFilePath)
 //    oneDegreeAll(graph).foreach(println(_))
 //    twoDegreeAll(graph).foreach(println(_))
-    loadGraphNoIndex(edgeFilePath)
+//    loadGraphNoIndex(edgeFilePath).edges.foreach(println(_))
+    loadGraphNoIndex(edgeFilePath).triplets.foreach(println(_))
   }
 }
