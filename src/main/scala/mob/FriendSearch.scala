@@ -30,7 +30,23 @@ object FriendSearch {
     val graph: Graph[Long, String] = Graph.fromEdges(edgeRDD, 0, StorageLevel.MEMORY_AND_DISK, StorageLevel.MEMORY_AND_DISK)
     return graph.mapVertices((id, att) => (att.toString))
   }
-
+  def loadGraphNoIndex(edgeFilePath:String)={
+    val conf = new SparkConf().setAppName("graph").setMaster("local")
+    val sc = new SparkContext(conf)
+    val edgeRDD = sc.textFile(edgeFilePath)
+                    .map(edgeString=>edgeString.split(" "))
+                    .filter(array=>array.length==2&&array(0)!=array(1)).cache()
+    val vertex = edgeRDD.repartition(5).flatMap(x=>x).distinct().zipWithUniqueId()
+//    edgeRDD.fl
+  }
+  def generaVerId(vertex:RDD[String]): Unit ={
+    val vertexNum = vertex.count()
+    val vertexPartitionNum = vertex.getNumPartitions
+    val partitionNum = vertexNum/vertexPartitionNum
+    val rangPartition = (0 until vertexPartitionNum).map(partitionId =>(partitionId*partitionNum,(partitionId+1)*partitionNum))
+    val vertexIdRdd = vertex.sparkContext.parallelize(rangPartition,rangPartition.size).flatMap(x=>x._1 until x._2)
+    vertexIdRdd.zipWithIndex().foreach(println(_))
+  }
   /**
     * 正向搜索图
     *
@@ -173,9 +189,9 @@ object FriendSearch {
 
   def main(args: Array[String]): Unit = {
     val edgeFilePath = "D:\\graph.txt"
-    val graph: Graph[String, String] = loadGraph(edgeFilePath)
-    oneDegreeAll(graph).foreach(println(_))
+//    val graph: Graph[String, String] = loadGraph(edgeFilePath)
+//    oneDegreeAll(graph).foreach(println(_))
 //    twoDegreeAll(graph).foreach(println(_))
-
+    loadGraphNoIndex(edgeFilePath)
   }
 }

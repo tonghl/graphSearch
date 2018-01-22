@@ -4,6 +4,11 @@ import org.apache.spark.graphx.{GraphLoader, VertexRDD}
 import org.apache.spark.{SparkConf, SparkContext}
 
 object GraphRale {
+  /**
+    * 数据列表的笛卡尔乘积：{1,2,3,4}=>{(1,2),(1,3),(1,4),(2,3),(2,4),(3,4）}
+    * @param input
+    * @return
+    */
   def ciculate(input:List[Long]):Set[String]={
     var result = Set[String]()
     input.foreach(x=>{
