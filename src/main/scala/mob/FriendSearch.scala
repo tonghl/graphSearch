@@ -1,6 +1,6 @@
 package mob
 
-import org.apache.spark.graphx.{Edge, Graph, VertexId}
+import org.apache.spark.graphx._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkConf, SparkContext}
@@ -90,9 +90,13 @@ object FriendSearch {
     * @return Graph(id,(正，反））
     */
   def oneDegreeAll(graph: Graph[String, String]): RDD[(VertexId, (String, String))] = {
-    val directSearchG = directSearch(graph, 0).vertices
-    val reverseSearchG = reverseSearch(graph, 0).vertices
-    return directSearchG.join(reverseSearchG)
+    //    val directSearchG = directSearch(graph, 0).vertices
+    //    val reverseSearchG = reverseSearch(graph, 0).vertices
+    //    return directSearchG.join(reverseSearchG)
+    val directSearchG = graph.collectNeighborIds(EdgeDirection.Out).mapValues(array => array.addString(new StringBuilder, "|").toString())
+    val reverseSearchG = graph.collectNeighborIds(EdgeDirection.In).mapValues(array => array.addString(new StringBuilder, "|").toString())
+    return directSearchG.fullOuterJoin(reverseSearchG).mapValues(truple => (truple._1.getOrElse(null), truple._2.getOrElse(null)))
+
   }
 
   /**
@@ -170,8 +174,8 @@ object FriendSearch {
   def main(args: Array[String]): Unit = {
     val edgeFilePath = "D:\\graph.txt"
     val graph: Graph[String, String] = loadGraph(edgeFilePath)
-    //    oneDegreeAll(graph)
-    twoDegreeAll(graph).foreach(println(_))
+    oneDegreeAll(graph).foreach(println(_))
+//    twoDegreeAll(graph).foreach(println(_))
 
   }
 }
